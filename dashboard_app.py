@@ -48,17 +48,41 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # ---------------- Auth (simple password gate) ----------------
 import os as _os
 
-def _authenticate():
-    # Collect allowed passwords from env APP_PASSWORD (comma separated) or st.secrets['APP_PASSWORDS']
+# Enhanced password collection to avoid errors when secrets.toml is absent and to
+# ensure gating whenever any password is configured via environment or secrets.
+
+def _collect_allowed_passwords():
     allowed = set()
-    env_pw = _os.getenv('APP_PASSWORD','').strip()
-    if env_pw:
-        allowed.update([p.strip() for p in env_pw.split(',') if p.strip()])
-    secret_pw = st.secrets.get('APP_PASSWORDS') if hasattr(st, 'secrets') else ''
-    if secret_pw:
-        allowed.update([p.strip() for p in str(secret_pw).split(',') if p.strip()])
-    if not allowed:
-        return True  # no password configured
+    # Environment variables (support single or comma-separated list)
+    for key in ('APP_PASSWORD', 'APP_PASSWORDS'):
+        val = _os.getenv(key, '')
+        if val:
+            allowed.update(p.strip() for p in val.split(',') if p.strip())
+    # Secrets (graceful handling if secrets not defined or key missing)
+    try:
+        sec = getattr(st, 'secrets', {})
+        for key in ('APP_PASSWORD', 'APP_PASSWORDS'):
+            if isinstance(sec, dict) and key in sec:
+                sval = str(sec[key])
+                if sval:
+                    allowed.update(p.strip() for p in sval.split(',') if p.strip())
+            else:
+                # st.secrets may be a config object supporting get
+                try:
+                    sval = sec.get(key) if hasattr(sec, 'get') else None
+                except Exception:
+                    sval = None
+                if sval:
+                    allowed.update(p.strip() for p in str(sval).split(',') if p.strip())
+    except Exception:
+        # Ignore any secrets access issues to avoid breaking the app
+        pass
+    return allowed
+
+def _authenticate():
+    allowed = _collect_allowed_passwords()
+    if not allowed:  # No passwords configured -> open access
+        return True
     if st.session_state.get('auth_ok'):
         return True
     st.title('🔒 Secure Dashboard')
