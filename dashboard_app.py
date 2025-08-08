@@ -45,6 +45,37 @@ div.st-expander { border: 1px solid #1f3447; border-radius: 10px; }
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+# ---------------- Auth (simple password gate) ----------------
+import os as _os
+
+def _authenticate():
+    # Collect allowed passwords from env APP_PASSWORD (comma separated) or st.secrets['APP_PASSWORDS']
+    allowed = set()
+    env_pw = _os.getenv('APP_PASSWORD','').strip()
+    if env_pw:
+        allowed.update([p.strip() for p in env_pw.split(',') if p.strip()])
+    secret_pw = st.secrets.get('APP_PASSWORDS') if hasattr(st, 'secrets') else ''
+    if secret_pw:
+        allowed.update([p.strip() for p in str(secret_pw).split(',') if p.strip()])
+    if not allowed:
+        return True  # no password configured
+    if st.session_state.get('auth_ok'):
+        return True
+    st.title('🔒 Secure Dashboard')
+    with st.form('login_form'):
+        pw = st.text_input('Password', type='password')
+        submit = st.form_submit_button('Enter')
+        if submit:
+            if pw in allowed:
+                st.session_state['auth_ok'] = True
+                st.success('Access granted')
+                return True
+            else:
+                st.error('Invalid password')
+    st.stop()
+
+_authenticate()
+
 @st.cache_data(ttl=300)
 def load_data():
     raw = load_raw_sheet()
@@ -179,7 +210,7 @@ with alloc_col:
     st.plotly_chart(alloc_fig, use_container_width=True)
 with pnl_col:
     pl_fig = px.bar(positions_live.sort_values('UnrealizedP&L', ascending=False), x='Crypto', y='UnrealizedP&L', title='Unrealized P&L by Asset', color='UnrealizedP&L', color_continuous_scale='RdYlGn')
-    pl_fig.update_layout(coloraxis_showscale=False, height=320 if compact_mode else 400, margin=dict(t=60 if not compact_mode else 40))
+    pl_fig.update_layout(coloraxis_showscale=False, height=320 if compact_mode else 400, margin=dict(t=60 if not compact_mode else 40), showlegend=False)
     st.plotly_chart(pl_fig, use_container_width=True)
 
 # ---------------- Positions table ----------------
